@@ -1,0 +1,298 @@
+import streamlit as st
+import time
+
+# Page Setup
+st.set_page_config(
+    page_title="Genius Planet Senior Sec. School (GPS)",
+    page_icon="🏫",
+    layout="centered"
+)
+
+# --- 1. HIDDEN SUPER ADMIN WHITELIST & GROUPS LIST ---
+SUPER_ADMIN_PHONES = ["9425370830", "9425040799", "9425040299"]
+
+GPS_GROUPS = [
+    "Nursery", "KG-1", "KG-2",
+    "Class 1st", "Class 2nd", "Class 3rd", "Class 4th", "Class 5th",
+    "Class 6th", "Class 7th", "Class 8th", "Class 9th", "Class 10th",
+    "Class 11th", "Class 12th", "Teaching & Staff", "Sports & Cultural", "GPS General"
+]
+
+
+# --- 2. INITIALIZE DATABASE STATE ---
+if "users_db" not in st.session_state:
+    st.session_state.users_db = {
+        "9425370830": {
+            "name": "Super Admin",
+            "role": "super_admin",
+            "admin_status": "approved",
+            "groups": GPS_GROUPS
+        },
+        "9425040799": {
+            "name": "Super Admin",
+            "role": "super_admin",
+            "admin_status": "approved",
+            "groups": GPS_GROUPS
+        },
+        "9425040299": {
+            "name": "Super Admin",
+            "role": "super_admin",
+            "admin_status": "approved",
+            "groups": GPS_GROUPS
+        }
+    }
+
+# Notice Database
+if "notices_db" not in st.session_state:
+    st.session_state.notices_db = {
+        group: [
+            {
+                "author": "School Administration",
+                "phone": "GPS Admin",
+                "text": f"Welcome to the official GPS {group} notice board!",
+                "file_name": None,
+                "file_bytes": None,
+                "file_type": None,
+                "timestamp": "Official Announcement"
+            }
+        ] for group in GPS_GROUPS
+    }
+
+# Session Tracker
+if "current_user_phone" not in st.session_state:
+    st.session_state.current_user_phone = None
+
+
+# --- 3. SIDEBAR: NAVIGATION & AUTHENTICATION ---
+st.sidebar.image("https://img.icons8.com/color/96/school.png", width=70)
+st.sidebar.title("GPS Mobile Portal")
+
+# GROUP SELECTOR
+selected_group = st.sidebar.selectbox("📂 Select School Group:", GPS_GROUPS)
+st.sidebar.divider()
+
+# LOGIN / SIGNUP TABS
+if st.session_state.current_user_phone is None:
+    st.sidebar.subheader("📱 Portal Access")
+    tab_login, tab_signup = st.sidebar.tabs(["🔑 Login", "📝 Sign Up"])
+    
+    # --- LOGIN TAB ---
+    with tab_login:
+        login_phone = st.text_input("Phone Number:", key="login_phone", placeholder="Enter mobile number")
+        if st.button("Log In", key="login_btn"):
+            cleaned_phone = login_phone.strip()
+            if cleaned_phone in st.session_state.users_db:
+                st.session_state.current_user_phone = cleaned_phone
+                st.sidebar.success("Logged in successfully!")
+                st.rerun()
+            else:
+                st.sidebar.error("Phone number not registered. Please create an account in Sign Up.")
+
+    # --- SIGN UP TAB ---
+    with tab_signup:
+        signup_name = st.text_input("Full Name:", key="signup_name", placeholder="e.g. Ramesh Kumar")
+        signup_phone = st.text_input("Phone Number:", key="signup_phone", placeholder="Enter 10-digit number")
+        signup_groups = st.multiselect("Select Group(s):", GPS_GROUPS, default=["Nursery"])
+        
+        request_admin = st.checkbox("🙋 Apply for Teacher / Staff Admin Role", value=False)
+        
+        if st.button("Create Account", key="signup_btn"):
+            c_name, c_phone = signup_name.strip(), signup_phone.strip()
+            if not c_name or not c_phone:
+                st.sidebar.error("Name and Phone Number are required.")
+            elif c_phone in st.session_state.users_db:
+                st.sidebar.warning("This phone number is already registered! Please log in.")
+            else:
+                if c_phone in SUPER_ADMIN_PHONES:
+                    user_role = "super_admin"
+                    admin_status = "approved"
+                    status_msg = "Account authenticated successfully!"
+                elif request_admin:
+                    user_role = "non_admin"
+                    admin_status = "pending"
+                    status_msg = "Account created! Admin role application submitted for school verification."
+                else:
+                    user_role = "non_admin"
+                    admin_status = "none"
+                    status_msg = "Account created successfully!"
+
+                st.session_state.users_db[c_phone] = {
+                    "name": c_name,
+                    "role": user_role,
+                    "admin_status": admin_status,
+                    "groups": signup_groups
+                }
+                
+                st.session_state.current_user_phone = c_phone
+                st.sidebar.success(status_msg)
+                st.rerun()
+
+else:
+    # LOGGED IN PROFILE DISPLAY
+    active_phone = st.session_state.current_user_phone
+    active_user = st.session_state.users_db[active_phone]
+    
+    st.sidebar.success(f"👤 **{active_user['name']}**")
+    st.sidebar.info(f"📞 Phone: `{active_phone}`")
+    
+    if active_user["role"] == "super_admin":
+        st.sidebar.markdown("⭐ **Role:** `SUPER ADMIN`")
+    elif active_user["role"] == "admin":
+        st.sidebar.markdown("🔑 **Role:** `TEACHER / GROUP ADMIN`")
+    elif active_user.get("admin_status") == "pending":
+        st.sidebar.markdown("⏳ **Role:** `PARENT` *(Staff Verification Pending)*")
+    else:
+        st.sidebar.markdown("👥 **Role:** `PARENT / STUDENT` (Read-Only)")
+
+    if st.sidebar.button("Log Out"):
+        st.session_state.current_user_phone = None
+        st.rerun()
+
+
+# --- 4. SUPER ADMIN APPROVAL PANEL & USER MANAGEMENT ---
+if st.session_state.current_user_phone:
+    current_role = st.session_state.users_db[st.session_state.current_user_phone]["role"]
+    
+    if current_role == "super_admin":
+        st.sidebar.divider()
+        st.sidebar.subheader("⚙️ Super Admin Controls")
+        
+        # APPROVE/REJECT PENDING ADMIN REQUESTS
+        pending_applicants = [
+            (phone, details) for phone, details in st.session_state.users_db.items() 
+            if details.get("admin_status") == "pending"
+        ]
+        
+        st.sidebar.markdown(f"### 📋 Staff Admin Requests (`{len(pending_applicants)}`)")
+        
+        if pending_applicants:
+            for p_phone, p_info in pending_applicants:
+                with st.sidebar.expander(f"👤 {p_info['name']}", expanded=True):
+                    st.write(f"📞 **Phone:** `{p_phone}`")
+                    st.write(f"📂 **Requested Groups:** {', '.join(p_info['groups'])}")
+                    
+                    col_app, col_rej = st.columns(2)
+                    if col_app.button("✅ Approve", key=f"app_{p_phone}"):
+                        st.session_state.users_db[p_phone]["role"] = "admin"
+                        st.session_state.users_db[p_phone]["admin_status"] = "approved"
+                        st.sidebar.success(f"Approved {p_info['name']} as Admin!")
+                        st.rerun()
+                        
+                    if col_rej.button("❌ Reject", key=f"rej_{p_phone}"):
+                        st.session_state.users_db[p_phone]["admin_status"] = "rejected"
+                        st.sidebar.info(f"Rejected request for {p_info['name']}.")
+                        st.rerun()
+        else:
+            st.sidebar.caption("No pending admin applications.")
+
+        # REMOVE / DELETE USERS
+        st.sidebar.divider()
+        st.sidebar.markdown("**Remove User Account:**")
+        deletable_users = [
+            f"{info['name']} ({phone})" 
+            for phone, info in st.session_state.users_db.items() 
+            if info["role"] != "super_admin"
+        ]
+        
+        if deletable_users:
+            user_to_delete = st.sidebar.selectbox("Select Account to Remove:", deletable_users)
+            if st.sidebar.button("❌ Remove Account"):
+                target_p = user_to_delete.split("(")[-1].replace(")", "").strip()
+                del st.session_state.users_db[target_p]
+                st.sidebar.success("Account deleted!")
+                st.rerun()
+        else:
+            st.sidebar.caption("No non-admin accounts to remove.")
+
+
+# --- 5. MAIN NOTICE BOARD & PUBLISHING PANEL ---
+st.title("🏫 Genius Planet Senior Sec. School")
+st.subheader(f"📢 {selected_group} - Notice Board")
+st.divider()
+
+is_logged_in = st.session_state.current_user_phone is not None
+user_role = st.session_state.users_db[st.session_state.current_user_phone]["role"] if is_logged_in else "guest"
+can_post = user_role in ["super_admin", "admin"]
+
+if can_post:
+    st.markdown("### ✍️ Publish Notice & Alert Group")
+    with st.form("notice_form", clear_on_submit=True):
+        notice_text = st.text_area("Write Announcement Message:")
+        uploaded_file = st.file_uploader("Attach Document / Photo:", type=["png", "jpg", "jpeg", "pdf", "docx"])
+        send_sms_alert = st.checkbox("📱 Send SMS / Push Alert to Group Members", value=True)
+        
+        submit_btn = st.form_submit_button("📢 Publish Notice Now")
+
+        if submit_btn:
+            if notice_text or uploaded_file:
+                current_user_info = st.session_state.users_db[st.session_state.current_user_phone]
+                
+                # Save Notice
+                st.session_state.notices_db[selected_group].insert(0, {
+                    "author": current_user_info["name"],
+                    "phone": st.session_state.current_user_phone,
+                    "text": notice_text,
+                    "file_name": uploaded_file.name if uploaded_file else None,
+                    "file_bytes": uploaded_file.getvalue() if uploaded_file else None,
+                    "file_type": uploaded_file.type if uploaded_file else None,
+                    "timestamp": time.strftime("%d %b %Y, %I:%M %p")
+                })
+                
+                if send_sms_alert:
+                    target_parents = [
+                        (phone, data["name"]) 
+                        for phone, data in st.session_state.users_db.items() 
+                        if selected_group in data.get("groups", []) and phone != st.session_state.current_user_phone
+                    ]
+                    
+                    st.success(f"Notice Published to **{selected_group}**!")
+                    
+                    if target_parents:
+                        st.subheader("📲 SMS Alert Dispatch Log")
+                        for phone, name in target_parents:
+                            st.info(f"📩 **Alert Sent:** `To {name} ({phone})`\n\n> *\"GPS Alert ({selected_group}): {notice_text[:60]}...\"*")
+                    else:
+                        st.warning(f"Notice published, but no registered users are currently assigned to **{selected_group}**.")
+                st.rerun()
+            else:
+                st.warning("Please type a message or attach a file.")
+
+elif is_logged_in:
+    st.info("🔒 **Read-Only Mode:** You are logged in as a Parent / Student. Only authorized Teachers and Admins can publish notices.")
+else:
+    st.info("👈 Please Log In or Sign Up from the sidebar to view group updates.")
+
+st.divider()
+
+# --- 6. NOTICE FEED ---
+st.markdown("### 📄 Announcements Feed")
+notices = st.session_state.notices_db.get(selected_group, [])
+
+if not notices:
+    st.info("No notices published in this group yet.")
+else:
+    for n in notices:
+        with st.container():
+            st.markdown(f"**📢 Posted by:** `{n['author']}`")
+            if "timestamp" in n:
+                st.caption(f"🕒 Published: {n['timestamp']}")
+            if n["text"]:
+                st.write(n["text"])
+            
+            if n["file_name"] and n["file_bytes"]:
+                if n["file_type"] and "image" in n["file_type"]:
+                    st.image(n["file_bytes"], caption=n["file_name"], use_container_width=True)
+                else:
+                    st.download_button(
+                        label=f"📎 Download Document: {n['file_name']}",
+                        data=n["file_bytes"],
+                        file_name=n["file_name"]
+                    )
+            st.divider()
+
+# --- 7. SECURE DIRECTORY (SUPER ADMIN ONLY) ---
+if is_logged_in and user_role == "super_admin":
+    with st.expander("🔐 Super Admin Directory (Confidential Account Listing)"):
+        st.write("All registered accounts in database:")
+        for phone, details in st.session_state.users_db.items():
+            st.write(f"- **{phone}** | Name: `{details['name']}` | Role: `{details['role']}` | Admin Request: `{details.get('admin_status', 'N/A')}`")
